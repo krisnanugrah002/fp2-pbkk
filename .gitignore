@@ -1,0 +1,18 @@
+# Environments
+.env
+.venv/
+env/
+venv/
+
+# Database
+*.db
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Streamlit & OS Files
+.streamlit/
+.DS_Store
