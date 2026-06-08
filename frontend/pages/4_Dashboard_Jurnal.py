@@ -1,7 +1,15 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from utils.api_client import get_weight_logs_api, create_weight_log_api, get_food_logs_api, create_food_log_api
+import datetime
+from utils.api_client import (
+    get_weight_logs_api, 
+    create_weight_log_api,
+    get_food_logs_api, 
+    create_food_log_api,
+    get_activity_logs_api,   
+    create_activity_log_api    
+)
 
 st.set_page_config(page_title="Dashboard Jurnal", page_icon="📊", layout="wide")
 
@@ -11,7 +19,7 @@ if "access_token" not in st.session_state or not st.session_state["access_token"
     st.warning("Silakan melakukan login terlebih dahulu di halaman utama untuk mengakses Jurnal Pribadi.")
     st.stop()
 
-tab_weight, tab_food = st.tabs(["Jurnal Berat Badan", "Jurnal Asupan Makanan"])
+tab_weight, tab_food, tab_activity = st.tabs(["Jurnal Berat Badan", "Jurnal Makanan", "Jurnal Aktivitas"])
 
 with tab_weight:
     st.subheader("Entri Berat Badan Baru")
@@ -93,36 +101,87 @@ with tab_food:
 
     if food_logs and food_logs.status_code == 200 and food_logs.json():
         df_food = pd.DataFrame(food_logs.json())
-               
-        total_cal = df_food['calories'].sum()
-        total_protein = df_food['protein_g'].sum()
+        df_food['log_date'] = pd.to_datetime(df_food['log_date']).dt.strftime('%Y-%m-%d')
+    
+        today_str = datetime.date.today().strftime('%Y-%m-%d')
+        
+        df_today = df_food[df_food['log_date'] == today_str]
+        total_cal = df_today['calories'].sum()
+        total_protein = df_today['protein_g'].sum()
                 
         col_m1, col_m2 = st.columns(2)
-        col_m1.metric("Total Kalori Tercatat", f"{total_cal:g} kkal")
-        col_m2.metric("Total Protein Tercatat", f"{total_protein:g} g")
+        
+        col_m1.metric("Total Kalori Hari Ini", f"{total_cal:g} kkal")
+        col_m2.metric("Total Protein Hari Ini", f"{total_protein:g} g")
                 
         st.markdown("<br>", unsafe_allow_html=True)
                 
-        df_food['log_date'] = pd.to_datetime(df_food['log_date']).dt.strftime('%Y-%m-%d')
-
         df_display = df_food[['log_date', 'food_name', 'calories', 'protein_g']].rename(columns={
             'log_date': 'Tanggal', 
             'food_name': 'Nama Makanan', 
             'calories': 'Calories', 
             'protein_g': 'Protein (g)'
         })
-
+                
         df_display['Calories'] = df_display['Calories'].apply(lambda x: f"{x:g}")
         df_display['Protein (g)'] = df_display['Protein (g)'].apply(lambda x: f"{x:g}")
-             
         df_display.insert(0, 'No.', range(1, len(df_display) + 1))
- 
+                
         styled_df = df_display.style.set_properties(**{'text-align': 'center'}).set_table_styles([
             {'selector': 'th', 'props': [('text-align', 'center')]}
         ])
-  
-        st.dataframe(styled_df, hide_index=True, use_container_width=True)
                 
-    else:
+        st.dataframe(styled_df, hide_index=True, use_container_width=True)
+    else:   
         st.info("Belum ada makanan yang dicatat.")
+
+with tab_activity:
+    st.subheader("Catat Aktivitas Olahraga Harian")
+
+with st.form("activity_log_form"):
+    a_name = st.text_input("Nama Olahraga / Aktivitas")
+    a_cal = st.number_input("Estimasi Kalori Terbakar (kkal)", min_value=0.0, step=10.0)
+    submit_activity = st.form_submit_button("Tambah Catatan Aktivitas")
+                
+    if submit_activity:
+        if a_name.strip() == "":
+            st.error("Nama olahraga tidak boleh kosong!")
+        else:
+            res_activity = create_activity_log_api(a_name, a_cal)
+        if res_activity and res_activity.status_code == 200:
+            st.success("Catatan aktivitas berhasil ditambahkan!")
+            st.rerun()
+        else:
+            st.error("Gagal menyimpan data aktivitas. Pastikan koneksi backend lancar.")
+
+    st.divider()
+    activity_logs = get_activity_logs_api()
+            
+    if activity_logs and activity_logs.status_code == 200 and activity_logs.json():
+        df_activity = pd.DataFrame(activity_logs.json())
+        df_activity['log_date'] = pd.to_datetime(df_activity['log_date']).dt.strftime('%Y-%m-%d')
+
+        today_str = datetime.date.today().strftime('%Y-%m-%d')
+        df_act_today = df_activity[df_activity['log_date'] == today_str]
+        total_burned = df_act_today['calories_burned'].sum()
+                
+        st.metric("Total Kalori Terbakar Hari Ini", f"{total_burned:g} kkal")
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        df_act_display = df_activity[['log_date', 'activity_name', 'calories_burned']].rename(columns={
+            'log_date': 'Tanggal', 
+            'activity_name': 'Nama Olahraga', 
+            'calories_burned': 'Kalori Terbakar (kkal)'
+        })
+                
+        df_act_display['Kalori Terbakar (kkal)'] = df_act_display['Kalori Terbakar (kkal)'].apply(lambda x: f"{x:g}")
+        df_act_display.insert(0, 'No.', range(1, len(df_act_display) + 1))
+            
+        styled_act_df = df_act_display.style.set_properties(**{'text-align': 'center'}).set_table_styles([
+            {'selector': 'th', 'props': [('text-align', 'center')]}
+        ])
+                
+        st.dataframe(styled_act_df, hide_index=True, use_container_width=True)
+    else:
+        st.info("Belum ada aktivitas olahraga yang dicatat.")
         
